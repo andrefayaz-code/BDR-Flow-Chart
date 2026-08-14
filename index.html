@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>iQuasar BDR call flow</title>
+<style>
+  :root{
+    --bg:#f7f6f2; --card:#ffffff; --border:#e3e1d8; --border-strong:#c9c6b8;
+    --text:#26251f; --text-2:#5b594e; --text-3:#8c897a;
+    --yes:#0f6e56; --yes-bg:#e1f5ee; --yes-b:#9fe1cb;
+    --no:#993c1d; --no-bg:#faece7; --no-b:#f0997b;
+    --branch:#534ab7; --branch-bg:#eeedfe; --branch-b:#afa9ec;
+    --pitch:#185fa5; --pitch-bg:#e6f1fb; --pitch-b:#85b7eb;
+    --close:#0f6e56;
+    --line:#c9c6b8;
+    --radius:12px;
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#1b1a17; --card:#242320; --border:#3a382f; --border-strong:#4c4a3e;
+      --text:#f1efe8; --text-2:#c2c0b3; --text-3:#8c897a;
+      --yes:#5dcaa5; --yes-bg:#123a2e; --yes-b:#0f6e56;
+      --no:#f0997b; --no-bg:#3a2116; --no-b:#993c1d;
+      --branch:#afa9ec; --branch-bg:#211f42; --branch-b:#534ab7;
+      --pitch:#85b7eb; --pitch-bg:#0e2438; --pitch-b:#185fa5;
+    }
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .topbar{
+    position:sticky; top:0; z-index:50;
+    background:var(--bg); border-bottom:1px solid var(--border);
+    padding:14px 20px; display:flex; align-items:center; justify-content:space-between;
+    gap:12px; flex-wrap:wrap;
+  }
+  .topbar h1{ font-size:16px; font-weight:600; margin:0; }
+  .topbar .sub{ font-size:12.5px; color:var(--text-3); margin-top:2px; }
+  .controls{ display:flex; gap:8px; }
+  .btn{
+    font-size:12.5px; padding:7px 12px; border-radius:999px; border:1px solid var(--border-strong);
+    background:var(--card); color:var(--text-2); cursor:pointer; white-space:nowrap;
+  }
+  .btn:hover{ border-color:var(--text-3); color:var(--text); }
+  .wrap{ max-width:1000px; margin:0 auto; padding:28px 20px 80px; }
+  .col{ display:flex; flex-direction:column; align-items:center; position:relative; }
+
+  .connector{ width:1.5px; background:var(--line); }
+  .arrow-down{
+    width:0; height:0; margin:0 auto;
+    border-left:5px solid transparent; border-right:5px solid transparent;
+    border-top:7px solid var(--line);
+  }
+
+  .node{
+    width:100%; max-width:520px; background:var(--card); border:1px solid var(--border-strong);
+    border-radius:var(--radius); cursor:pointer; user-select:none;
+    transition:box-shadow .15s ease, border-color .15s ease;
+  }
+  .node:hover{ border-color:var(--text-3); box-shadow:0 2px 10px rgba(0,0,0,.06); }
+  .node.open{ box-shadow:0 2px 14px rgba(0,0,0,.08); }
+  .node-head{ display:flex; align-items:center; justify-content:space-between; padding:14px 16px; gap:10px; }
+  .node-head-text .tag{
+    font-size:10.5px; letter-spacing:.04em; text-transform:uppercase; font-weight:700;
+    color:var(--text-3); margin-bottom:3px; display:block;
+  }
+  .node-head-text .title{ font-size:15px; font-weight:600; color:var(--text); line-height:1.3; }
+  .node-head-text .subtitle{ font-size:12.5px; color:var(--text-2); margin-top:2px; }
+  .chev{ font-size:12px; color:var(--text-3); transition:transform .15s ease; flex:0 0 auto; margin-top:2px;}
+  .node.open .chev{ transform:rotate(90deg); }
+  .node-body{
+    max-height:0; overflow:hidden; transition:max-height .22s ease;
+    border-top:0 solid var(--border);
+  }
+  .node.open .node-body{ border-top:1px solid var(--border); }
+  .node-body-inner{ padding:14px 16px 16px; font-size:13.5px; color:var(--text-2); line-height:1.6; }
+  .node-body-inner .line{ margin-bottom:8px; }
+  .node-body-inner .line:last-child{ margin-bottom:0; }
+  .node-body-inner .script{
+    background:var(--bg); border:1px solid var(--border); border-radius:8px;
+    padding:10px 12px; font-style:italic; color:var(--text); margin-bottom:8px;
+  }
+  .node-body-inner ul{ margin:6px 0 0; padding-left:18px; }
+  .node-body-inner li{ margin-bottom:4px; }
+  .node-body-inner .label{ font-weight:600; color:var(--text); }
+
+  /* category accents */
+  .n-start{ border-left:3px solid var(--text-3); }
+  .n-yes{ border-left:3px solid var(--yes); }
+  .n-no{ border-left:3px solid var(--no); }
+  .n-branch{ border-left:3px solid var(--branch); }
+  .n-pitch{ border-left:3px solid var(--pitch); }
+  .n-close{ border-left:3px solid var(--yes); }
+  .n-outcome{ border-left:3px solid var(--text-3); }
+
+  .branchrow{
+    display:flex; gap:16px; width:100%; max-width:900px; justify-content:center;
+    flex-wrap:wrap; align-items:flex-start;
+  }
+  .branchcol{ flex:1 1 260px; max-width:300px; display:flex; flex-direction:column; align-items:center; }
+  .yn-label{
+    font-size:11px; font-weight:700; letter-spacing:.04em; text-transform:uppercase;
+    padding:3px 10px; border-radius:999px; margin-bottom:8px;
+  }
+  .yn-label.yes{ color:var(--yes); background:var(--yes-bg); }
+  .yn-label.no{ color:var(--no); background:var(--no-bg); }
+
+  .rejoin{
+    display:flex; justify-content:center; width:100%; max-width:900px; position:relative; height:20px;
+  }
+
+  .section-label{
+    font-size:11px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--text-3); margin:34px 0 14px; text-align:center;
+  }
+
+  .hidden{ display:none !important; }
+
+  footer.legend{
+    max-width:1000px; margin:40px auto 0; padding:16px 20px;
+    display:flex; gap:18px; flex-wrap:wrap; font-size:12px; color:var(--text-3);
+    border-top:1px solid var(--border);
+  }
+  .legend .dot{ display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:6px; vertical-align:middle;}
+  .d-yes{background:var(--yes);} .d-no{background:var(--no);} .d-branch{background:var(--branch);} .d-pitch{background:var(--pitch);}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <h1>iQuasar BDR call flow</h1>
+    <div class="sub">Full cold call script — click any step to expand</div>
+  </div>
+  <div class="controls">
+    <button class="btn" id="expandAll">Expand all</button>
+    <button class="btn" id="collapseAll">Collapse all</button>
+  </div>
+</div>
+
+<div class="wrap">
+  <div class="col" id="flow"></div>
+</div>
+
+<footer class="legend">
+  <span><span class="dot d-yes"></span>Yes / positive path</span>
+  <span><span class="dot d-no"></span>No / negative path</span>
+  <span><span class="dot d-branch"></span>Branch / discovery</span>
+  <span><span class="dot d-pitch"></span>Positioning / close</span>
+</footer>
+
+<script>
+const DATA = [
+  { type:"node", id:"opening", cls:"n-start", tag:"Start", title:"Opening", subtitle:"Permission-based hook",
+    body: [
+      { t:"script", v:"\u201CHi {{First Name}}, this is {{BDR}} with iQuasar. Did I catch you with 30 seconds?\u201D" },
+      { t:"line", v:"<span class=\"label\">Purpose:</span> Ask permission before pitching. Keeps the prospect in control and lowers resistance." }
+    ]
+  },
+  { type:"branch", id:"permission",
+    yes: { id:"yes-brief", cls:"n-yes", tag:"If yes", title:"\u201CGreat, I'll be brief.\u201D", subtitle:"Move into brief positioning",
+      body:[ { t:"line", v:"Give a brief, high-level mention of iQuasar's positioning before moving straight into the conversation starter question." } ] },
+    no: { id:"no-reschedule", cls:"n-no", tag:"If no", title:"Ask for a better time", subtitle:"Don't push, reschedule",
+      body:[
+        { t:"script", v:"\u201CNo problem. When would be a better time to connect?\u201D" },
+        { t:"line", v:"Log the requested time and follow up then \u2014 still leads into the same conversation starter on the next call." }
+      ] }
+  },
+  { type:"node", id:"starter", cls:"n-branch", tag:"Conversation starter", title:"Pre-RFP relationship question", subtitle:"Opens discovery",
+    body:[
+      { t:"script", v:"\u201CHow are you currently building relationships with primes and agencies before an opportunity actually becomes an RFP?\u201D" },
+      { t:"line", v:"This is designed to surface how (or whether) they do early-stage business development, before any RFP exists." }
+    ]
+  },
+  { type:"threebranch", id:"response",
+    label: "Prospect response \u2014 three likely paths",
+    items: [
+      { id:"resp-team", cls:"n-branch", tag:"Response A", title:"\u201CWe have a BD/capture team\u201D", subtitle:"Existing team in place",
+        body:[
+          { t:"line", v:"<span class=\"label\">Follow-up question:</span> Is the team focused mainly on active pursuits, or also on early-stage BD?" },
+          { t:"line", v:"This tests whether the team covers pre-RFP relationship-building or only kicks in once an opportunity is already live." }
+        ]},
+      { id:"resp-self", cls:"n-branch", tag:"Response B", title:"\u201CWe do it ourselves\u201D", subtitle:"No dedicated team",
+        body:[
+          { t:"line", v:"<span class=\"label\">Follow-up question:</span> Is someone consistently responsible for this, or does it happen only around specific opportunities?" },
+          { t:"line", v:"Reveals whether BD is a sustained discipline or a reactive, opportunity-by-opportunity scramble \u2014 the latter is a strong signal of a gap." }
+        ]},
+      { id:"resp-pain", cls:"n-branch", tag:"Response C", title:"Describes a specific BD challenge", subtitle:"Pain named directly",
+        body:[
+          { t:"line", v:"They volunteer a concrete problem unprompted \u2014 skip straight to identifying the BD gap using their own words." }
+        ]}
+    ]
+  },
+  { type:"node", id:"gap", cls:"n-branch", tag:"Synthesize", title:"Identify the BD gap", subtitle:"Where the real need sits",
+    body:[
+      { t:"line", v:"Based on their answer, mentally sort the gap into one (or more) of these buckets:" },
+      { t:"list", v:["Relationship building","Pipeline development","Agency access","Prime relationships","Teaming partners","Pre-RFP positioning"] }
+    ]
+  },
+  { type:"node", id:"discovery-lead", cls:"n-branch", tag:"Next", title:"Ask 2\u20133 discovery questions", subtitle:"Pick the track(s) that fit",
+    body:[ { t:"line", v:"Choose from the three question tracks below based on which gap surfaced. You don't need to ask all three \u2014 pick what's relevant." } ]
+  },
+  { type:"threebranch", id:"tracks",
+    label: "Discovery question tracks",
+    items: [
+      { id:"track-pipeline", cls:"n-pitch", tag:"Track: pipeline", title:"Pipeline", subtitle:"Where growth is expected",
+        body:[ { t:"script", v:"\u201CWhere is next federal growth expected to come from?\u201D" } ]},
+      { id:"track-prerfp", cls:"n-pitch", tag:"Track: pre-RFP", title:"Pre-RFP positioning", subtitle:"How early they get involved",
+        body:[ { t:"script", v:"\u201CHow early do you get involved before an RFP?\u201D" } ]},
+      { id:"track-teaming", cls:"n-pitch", tag:"Track: teaming", title:"Teaming", subtitle:"Bench of partners",
+        body:[ { t:"script", v:"\u201CAre you building a bench of primes and teaming partners?\u201D" } ]}
+    ]
+  },
+  { type:"node", id:"additional", cls:"n-branch", tag:"As appropriate", title:"Additional questions", subtitle:"Deepen the picture if useful",
+    body:[
+      { t:"line", v:"Layer in only if the conversation supports it \u2014 don't force all four:" },
+      { t:"list", v:["Business concentration (how reliant they are on a few contracts)","Agency targets (which agencies they're chasing)","Founder involvement (how hands-on leadership is in BD)","Execution gap (where the strategy breaks down in practice)"] }
+    ]
+  },
+  { type:"node", id:"pain-identified", cls:"n-outcome", tag:"Checkpoint", title:"Prospect identifies pain point / gap", subtitle:"They've named the problem",
+    body:[ { t:"line", v:"By this point the prospect should have articulated \u2014 in their own words \u2014 a specific gap. That's the bridge into positioning." } ]
+  },
+  { type:"node", id:"positioning", cls:"n-pitch", tag:"Positioning", title:"iQuasar positioning", subtitle:"\u201CThat's exactly why I reached out.\u201D",
+    body:[
+      { t:"script", v:"\u201CThat's exactly why I reached out.\u201D" },
+      { t:"line", v:"iQuasar provides the BD execution underneath GovCon teams. We:" },
+      { t:"list", v:["Research the market","Identify relevant contracts","Analyze incumbents","Map agencies and prime contacts","Identify teaming partners","Execute outreach","Build conversations and relationships","Support collateral development"] }
+    ]
+  },
+  { type:"node", id:"connect-value", cls:"n-pitch", tag:"Tailor", title:"Connect value to their pain point", subtitle:"Make it specific to them",
+    body:[ { t:"script", v:"\u201CBased on what you said, we could help with...\u201D" }, { t:"line", v:"Reference their exact answer from discovery \u2014 generic positioning loses them here." } ]
+  },
+  { type:"branch", id:"what-do-you-do",
+    prompt: { cls:"n-outcome", tag:"Checkpoint", title:"Does the prospect ask \u201CWhat exactly do you do?\u201D", subtitle:"", body:[] },
+    yes: { id:"thirty-sec", cls:"n-pitch", tag:"If asked", title:"30-second positioning", subtitle:"Outsourced BD team",
+      body:[
+        { t:"script", v:"\u201CThink of us as an outsourced BD team for GovCons...\u201D" },
+        { t:"line", v:"<span class=\"label\">Core formula:</span> Intelligence + execution = pipeline." }
+      ]},
+    no: { id:"skip-pitch", cls:"n-outcome", tag:"If not asked", title:"Move straight to the close", subtitle:"No need to over-explain",
+      body:[ { t:"line", v:"If they don't ask, don't force the 30-second pitch \u2014 go directly to proposing the meeting." } ] }
+  },
+  { type:"node", id:"meeting-close", cls:"n-close", tag:"Close", title:"Meeting close", subtitle:"Propose the next step",
+    body:[ { t:"script", v:"\u201CI think there may be enough here for a useful conversation. Would it make sense to put 20 minutes on the calendar with one of our BD leads?\u201D" } ]
+  },
+  { type:"branch", id:"close-response",
+    yes: { id:"offer-times", cls:"n-yes", tag:"If yes", title:"Offer two time options", subtitle:"Give a clear choice",
+      body:[ { t:"script", v:"\u201C{{Day/Time}}\u201D or \u201C{{Day/Time}}\u201D?" } ] },
+    no: { id:"objection", cls:"n-no", tag:"If no", title:"Identify the objection", subtitle:"Keep the door open",
+      body:[ { t:"line", v:"Ask what would make a conversation useful, note the objection, and continue nurturing \u2014 don't drop the lead." } ] }
+  },
+  { type:"node", id:"scheduled", cls:"n-outcome", tag:"End", title:"Meeting scheduled", subtitle:"Capture key details before hanging up",
+    body:[
+      { t:"line", v:"Log before ending the call:" },
+      { t:"list", v:["Target agencies","Growth priorities","Current pipeline","BD gaps","Prime targets","Teaming needs"] }
+    ]
+  }
+];
+
+function scriptLine(v){ return `<div class="script">${v}</div>`; }
+function textLine(v){ return `<div class="line">${v}</div>`; }
+function listLine(items){ return `<ul>${items.map(i=>`<li>${i}</li>`).join("")}</ul>`; }
+
+function renderBody(body){
+  return body.map(b=>{
+    if(b.t==="script") return scriptLine(b.v);
+    if(b.t==="line") return textLine(b.v);
+    if(b.t==="list") return listLine(b.v);
+    return "";
+  }).join("");
+}
+
+function nodeHTML(n){
+  return `
+  <div class="node ${n.cls}" data-id="${n.id}" onclick="toggleNode('${n.id}')">
+    <div class="node-head">
+      <div class="node-head-text">
+        <span class="tag">${n.tag}</span>
+        <div class="title">${n.title}</div>
+        ${n.subtitle ? `<div class="subtitle">${n.subtitle}</div>` : ""}
+      </div>
+      <div class="chev">\u25B8</div>
+    </div>
+    <div class="node-body" id="body-${n.id}">
+      <div class="node-body-inner">${renderBody(n.body)}</div>
+    </div>
+  </div>`;
+}
+
+function connector(){
+  return `<div class="connector" style="height:20px;"></div><div class="arrow-down"></div>`;
+}
+
+function build(){
+  const flow = document.getElementById("flow");
+  let html = "";
+  DATA.forEach((item, idx) => {
+    if(idx > 0) html += connector();
+
+    if(item.type === "node"){
+      html += nodeHTML(item);
+    }
+    else if(item.type === "branch"){
+      if(item.prompt){
+        html += nodeHTML(item.prompt);
+        html += connector();
+      }
+      html += `<div class="branchrow">
+        <div class="branchcol">
+          <div class="yn-label yes">Yes</div>
+          ${nodeHTML(item.yes)}
+        </div>
+        <div class="branchcol">
+          <div class="yn-label no">No</div>
+          ${nodeHTML(item.no)}
+        </div>
+      </div>`;
+    }
+    else if(item.type === "threebranch"){
+      html += `<div class="section-label">${item.label}</div>`;
+      html += `<div class="branchrow">`;
+      item.items.forEach(it=>{
+        html += `<div class="branchcol">${nodeHTML(it)}</div>`;
+      });
+      html += `</div>`;
+    }
+  });
+  flow.innerHTML = html;
+}
+
+function toggleNode(id){
+  const node = document.querySelector(`.node[data-id="${id}"]`);
+  const body = document.getElementById(`body-${id}`);
+  if(!node || !body) return;
+  const isOpen = node.classList.contains("open");
+  if(isOpen){
+    node.classList.remove("open");
+    body.style.maxHeight = null;
+  } else {
+    node.classList.add("open");
+    body.style.maxHeight = body.scrollHeight + "px";
+  }
+}
+
+document.getElementById("expandAll").addEventListener("click", ()=>{
+  document.querySelectorAll(".node").forEach(node=>{
+    const id = node.getAttribute("data-id");
+    const body = document.getElementById(`body-${id}`);
+    node.classList.add("open");
+    body.style.maxHeight = body.scrollHeight + "px";
+  });
+});
+document.getElementById("collapseAll").addEventListener("click", ()=>{
+  document.querySelectorAll(".node").forEach(node=>{
+    node.classList.remove("open");
+    const id = node.getAttribute("data-id");
+    document.getElementById(`body-${id}`).style.maxHeight = null;
+  });
+});
+
+build();
+</script>
+</body>
+</html>
